@@ -17,6 +17,18 @@ struct metadata {
     /* empty */
 }
 
+typedef bit<48>  EthernetAddress;
+
+header Ethernet_h {
+    EthernetAddress dstAddr;
+    EthernetAddress srcAddr;
+    bit<16>         etherType;
+}
+
+struct Parsed_packet {
+    Ethernet_h    ethernet;
+}
+
 struct headers {
     /* empty */
 }
@@ -31,6 +43,7 @@ parser MyParser(packet_in packet,
                 inout standard_metadata_t standard_metadata) {
 
     state start {
+        pkt.extract(hdr.ethernet); // We need ethernet data to generate hash to flow identification
         transition accept;
     }
 
@@ -54,6 +67,9 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     bit<9> drop_prob;
+	bit<96> flow_identifier;
+	register<bit<96>>(1) qlen;// queue length per flow
+	register<bit<96>>(1) strike;// strike per flow
 
     action set_drop_probability (bit<9> drop_probability) {
         drop_prob = drop_probability;
@@ -71,6 +87,7 @@ control MyIngress(inout headers hdr,
     }
     
     apply {
+		flow_identifier = hdr.srcAddr + hdr.dstAddr
         calc_red_drop_probability.apply();
         bit<8> rand_val;
         random<bit<8>>(rand_val, 0, 255);
