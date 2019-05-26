@@ -76,6 +76,13 @@ control MyIngress(inout headers hdr,
 	QueueDepth_t qlen_old;
 	QueueDepth_t qlen_new;
 	QueueDepth_t size_to_add;
+	
+	register<QueueDepth_t>(NUM_FLOW_ENTRIES) packet_counter; // packet counter per flow
+	QueueDepth_t packet_counter_old;
+	QueueDepth_t packet_counter_new;
+	
+	QueueDepth_t avg_qlen; // queue length per flow
+	
 	register<QueueDepth_t>(NUM_FLOW_ENTRIES) strike;// strike per flow
 	QueueDepth_t stiker_old;
 	QueueDepth_t strike_new;
@@ -98,28 +105,36 @@ control MyIngress(inout headers hdr,
     apply {
 		flow_id = standard_metadata.flow_hash;
 		size_to_add = standard_metadata.pkt_len;
+		global_avg_qlen = standard_metadata.avg_qdepth
 		
 		qlen.read(qlen_old, flow_id);
 		qlen_new = qlen_old |+| size_to_add;
-		qlen.write(flow_id, qlen_new)
+		qlen.write(flow_id, qlen_new);
+		
+		packet_counter.read(packet_counter_old, flow_id);
+		packet_counter_new = packet_counter_old |+| 1;
+		packet_counter.write(flow_id, packet_counter_new);
+		
+		avg_qlen = qlen_new / packet_counter_new;
 		
         calc_red_drop_probability.apply();
         bit<8> rand_val;
         random<bit<8>>(rand_val, 0, 255);
-        // Of course someone might choose to do RED on multicast
-        // packets in some way, too.  I am just avoiding the question
-        // of what that might mean for this example.  One might also
-        // wish to only apply RED for TCP packets, in which case the
-        // 'if' condition would need to be changed to specify that.
-
-        // drop_prob=0 means never do RED drop.  drop_prob in the
-        // range [1, 256] means to drop a fraction (drop_prob/256) of
-        // the time.  It is 9 bits in size so we can represent the
-        // "always drop" case, desirable when the average queue depth
-        // is high enough.
+		
+		
+		if(avg_qlen > global_avg_qlen){
+			//
+		}
+		
+		
         if ( (bit<9>) rand_val < drop_prob) {
             standard_metadata.drop = 1;
+			strike.read(strike_old, flow_id);
+			strike_new = strike_old |+| 1;
+			strike.write(flow_id, strike_new);
+			
         }
+		if ()
     }
 }
 
@@ -143,6 +158,11 @@ control MyEgress(inout headers hdr,
 		qlen.read(qlen_old, flow_id);
 		qlen_new = qlen_old |-| size_to_remove;
 		qlen.write(flow_id, qlen_new)
+		
+		packet_counter.read(packet_counter_old, flow_id);
+		packet_counter_new = packet_counter_old |-| 1;
+		packet_counter.write(flow_id, packet_counter_new);
+		
 		}
 }
 
