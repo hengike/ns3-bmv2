@@ -5,6 +5,7 @@
 
 typedef bit<32> QueueDepth_t;
 const bit<16> TYPE_IPV4 = 0x800;
+#define NUM_FLOW_ENTRIES 512
 
 // This value specifies size for table calc_red_drop_probability.
 const bit<32> NUM_RED_DROP_VALUES = 1<<16; // 2^16
@@ -67,9 +68,17 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     bit<9> drop_prob;
-	bit<96> flow_identifier;
-	register<bit<96>>(1) qlen;// queue length per flow
-	register<bit<96>>(1) strike;// strike per flow
+	
+	FlowID_t flow_id;
+
+	
+	register<QueueDepth_t>(NUM_FLOW_ENTRIES) qlen; // queue length per flow
+	QueueDepth_t qlen_old;
+	QueueDepth_t qlen_new;
+	QueueDepth_t size_to_add;
+	register<QueueDepth_t>(NUM_FLOW_ENTRIES) strike;// strike per flow
+	QueueDepth_t stiker_old;
+	QueueDepth_t strike_new;
 
     action set_drop_probability (bit<9> drop_probability) {
         drop_prob = drop_probability;
@@ -87,7 +96,13 @@ control MyIngress(inout headers hdr,
     }
     
     apply {
-		flow_identifier = hdr.srcAddr + hdr.dstAddr
+		flow_id = standard_metadata.flow_hash;
+		size_to_add = standard_metadata.pkt_len;
+		
+		qlen.read(qlen_old, flow_id);
+		qlen_new = qlen_old |+| size_to_add;
+		qlen.write(flow_id, qlen_new)
+		
         calc_red_drop_probability.apply();
         bit<8> rand_val;
         random<bit<8>>(rand_val, 0, 255);
@@ -115,7 +130,20 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    apply {  }
+					 
+	register<QueueDepth_t>(NUM_FLOW_ENTRIES) qlen; // queue length per flow
+	QueueDepth_t qlen_old;
+	QueueDepth_t qlen_new;
+	QueueDepth_t size_to_remove;
+	
+    apply { 
+		flow_id = standard_metadata.flow_hash;
+		size_to_remove = standard_metadata.pkt_len;
+		
+		qlen.read(qlen_old, flow_id);
+		qlen_new = qlen_old |-| size_to_remove;
+		qlen.write(flow_id, qlen_new)
+		}
 }
 
 /*************************************************************************
