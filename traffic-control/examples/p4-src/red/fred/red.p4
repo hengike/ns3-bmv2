@@ -147,7 +147,6 @@ control MyIngress(inout headers hdr,
 			strike.write(flow_id, strike_new);
         }
 		
-		if ()
     }
 }
 
