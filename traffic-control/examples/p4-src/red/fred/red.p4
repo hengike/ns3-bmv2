@@ -117,23 +117,36 @@ control MyIngress(inout headers hdr,
 		
 		avg_qlen = qlen_new / packet_counter_new;
 		
+		strike.read(strike_old, flow_id);
+		
         calc_red_drop_probability.apply();
         bit<8> rand_val;
         random<bit<8>>(rand_val, 0, 255);
 		
-		
+		//high chance to drop if bigger then global
 		if(avg_qlen > global_avg_qlen){
-			//
+			if ( (bit<9>) rand_val < (drop_prob * 2)) {
+				standard_metadata.drop = 1;
+				strike_new = strike_old |+| 1;
+				strike.write(flow_id, strike_new);
+			}
+		}
+		
+		if(strike_old > 2){
+			if ( (bit<9>) rand_val < (drop_prob * 3)) {
+				standard_metadata.drop = 1;
+				strike_new = strike_old |+| 1;
+				strike.write(flow_id, strike_new);
+			}
 		}
 		
 		
         if ( (bit<9>) rand_val < drop_prob) {
             standard_metadata.drop = 1;
-			strike.read(strike_old, flow_id);
 			strike_new = strike_old |+| 1;
 			strike.write(flow_id, strike_new);
-			
         }
+		
 		if ()
     }
 }
